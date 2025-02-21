@@ -367,6 +367,7 @@ class PlotDataItem(GraphicsObject):
             'downsampleMethod': 'peak',
             'autoDownsampleFactor': 5.,  # draw ~5 samples per pixel
             'clipToView': False,
+            'lttb_threshold': 1000,
             'dynamicRangeLimit': 1e6,
             'dynamicRangeHyst': 3.0,
             'data': None,
@@ -589,7 +590,7 @@ class PlotDataItem(GraphicsObject):
         #self.scatter.setSymbolSize(symbolSize)
         self.updateItems(styleUpdate=True)
 
-    def setDownsampling(self, ds=None, auto=None, method=None):
+    def setDownsampling(self, ds=None, auto=None, method=None, lttb_threshold=None):
         """
         Sets the downsampling mode of this item. Downsampling reduces the number
         of samples drawn to increase performance.
@@ -605,6 +606,9 @@ class PlotDataItem(GraphicsObject):
                         'peak': Downsample by drawing a saw wave that follows the min
                         and max of the original data. This method produces the best
                         visual representation of the data but is slower.
+                        `lttb` - Downsample using Largest-Triangle-Three-Buckets requires lttb package to be installed.
+
+        lttb_threshold  Lttb threshold value
         ==============  =================================================================
         """
         changed = False
@@ -621,6 +625,10 @@ class PlotDataItem(GraphicsObject):
             if self.opts['downsampleMethod'] != method:
                 changed = True
                 self.opts['downsampleMethod'] = method
+
+        if lttb_threshold is not None and self.opts['lttb_threshold'] != lttb_threshold:
+            changed = True
+            self.opts['lttb_threshold'] = lttb_threshold
 
         if changed:
             self._datasetMapped  = None  # invalidata mapped data
@@ -1036,7 +1044,7 @@ class PlotDataItem(GraphicsObject):
                     x = x[x0:x1]
                     y = y[x0:x1]
 
-        if ds > 1:
+        if ds > 1 or (self.opts['lttb_threshold'] > 1 and self.opts['downsampleMethod'] == 'lttb'):
             if self.opts['downsampleMethod'] == 'subsample':
                 x = x[::ds]
                 y = y[::ds]
@@ -1056,6 +1064,12 @@ class PlotDataItem(GraphicsObject):
                 y1[:,0] = y2.max(axis=1)
                 y1[:,1] = y2.min(axis=1)
                 y = y1.reshape(n*2)
+            elif self.opts['downsampleMethod'] == 'lttb':
+                try:
+                    import lttbc
+                    x, y = lttbc.downsample(x, y, self.opts['lttb_threshold'])
+                except ImportError as e:
+                    warnings.warn(f"lttbc package is not installed ignoring down-sampling")
 
         if self.opts['dynamicRangeLimit'] is not None:
             if view_range is not None:
